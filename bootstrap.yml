@@ -1,0 +1,72 @@
+---
+- name: Bootstrap Debian server
+  hosts: graylog
+  become: true
+  vars:
+    tailscale_authkey: ""  # Provide via --extra-vars or Vault
+
+  tasks:
+    - name: Set system timezone to UTC
+      timezone:
+        name: Etc/UTC
+
+    - name: Enable NTP sync
+      systemd:
+        name: systemd-timesyncd
+        enabled: yes
+        state: started
+
+    - name: Update & upgrade system
+      apt:
+        upgrade: dist
+        update_cache: yes
+        autoremove: yes
+        autoclean: yes
+
+    - name: Reboot if needed
+      reboot:
+        pre_reboot_delay: 0
+        reboot_timeout: 600
+        post_reboot_delay: 30
+        test_command: uptime
+
+  roles:
+    - geerlingguy.docker
+
+  tasks:
+    - name: Install Tailscale
+      shell: curl -fsSL https://tailscale.com/install.sh | sh
+      args:
+        creates: /usr/sbin/tailscaled
+
+    - name: Enable Tailscale
+      systemd:
+        name: tailscaled
+        enabled: yes
+        state: started
+
+    - name: Join tailnet if auth key provided
+      shell: tailscale up --authkey {{ tailscale_authkey }} --ssh
+      when: tailscale_authkey != ""
+
+    - name: Enable UFW & allow SSH
+      ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Enable default UFW deny policy
+      ufw:
+        state: enabled
+        policy: deny
+    
+    - name: Add ansibleadmin to docker group
+      user:
+        name: ansibleadmin
+        groups: docker
+        append: yes
+    
+    - name: Add rippee to docker group
+      user:
+        name: rippee
+        groups: docker
+        append: yes
