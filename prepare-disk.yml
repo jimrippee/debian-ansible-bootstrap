@@ -1,0 +1,36 @@
+---
+- name: Prepare Docker data disk
+  hosts: all
+  become: yes
+  vars:
+    docker_data_device: /dev/sdb
+    docker_data_mount: /srv/docker-data
+
+  tasks:
+    - name: Create filesystem on new disk
+      community.general.filesystem:
+        fstype: ext4
+        dev: "{{ docker_data_device }}"
+        force: false
+
+    - name: Create mount point
+      file:
+        path: "{{ docker_data_mount }}"
+        state: directory
+        mode: '0755'
+
+    - name: Mount the disk
+      ansible.posix.mount:
+        path: "{{ docker_data_mount }}"
+        src: "{{ docker_data_device }}"
+        fstype: ext4
+        opts: defaults
+        state: mounted
+
+    - name: Ensure fstab entry is present
+      ansible.posix.mount:
+        path: "{{ docker_data_mount }}"
+        src: "{{ docker_data_device }}"
+        fstype: ext4
+        opts: defaults
+        state: present

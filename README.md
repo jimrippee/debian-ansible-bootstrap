@@ -1,70 +1,109 @@
-# Debian Server Bootstrap with Ansible
+# Graylog Docker Stack (with Tailscale & Systemd)
 
-This project automates the initial provisioning of a Debian-based server using Ansible. It installs core packages, configures the timezone, joins the server to your Tailscale tailnet, installs Docker using the `geerlingguy.docker` role, and enables basic firewall rules with UFW.
+This project bootstraps a secure, persistent Graylog stack using Docker Compose, tailored for headless or homelab environments. It supports automated deployment and systemd integration.
 
-## 🛠️ Features
+---
 
-- Set timezone to UTC
-- Full system update and dist-upgrade
-- Docker installation via `geerlingguy.docker` role
-- Tailscale installation and authentication
-- UFW configuration to allow SSH and deny all other traffic
-- Optional reboot after upgrade
-- Ready for Graylog container deployment or similar apps
+## 🔧 Components
 
-## 📁 Files
+- **Graylog**: Centralized log management
+- **MongoDB**: Metadata storage
+- **OpenSearch**: Log indexing and search
+- **Tailscale**: Secure remote access over your tailnet
 
-- `bootstrap.yml`: Main playbook
-- `inventory.ini`: Define your target hosts
-- `requirements.yml`: Role dependency for Docker (Geerlingguy)
+---
 
-## 🚀 Getting Started
+## 🚀 Deployment Steps
 
-### 1. Install Dependencies
-
-```bash
-brew install ansible  # or use apt/pip if on Linux
-```
-
-### 2. Install Required Roles
+1. Provision your Debian 12 server
+2. Run the Ansible playbook to install Docker and Tailscale
+3. Mount and prepare persistent disk at `/srv/docker-data`
+4. Place your `docker-compose.yml` and `.env` file in `/srv/docker-data`
+5. Run:
 
 ```bash
-ansible-galaxy install -r requirements.yml
+docker compose up -d
 ```
 
-### 3. Run the Playbook
+---
+
+## 🔐 .env File Security
+
+Your `.env` file contains **secrets** needed to launch the Graylog container:
+
+```env
+GRAYLOG_PASSWORD_SECRET=...
+GRAYLOG_ROOT_PASSWORD_SHA2=...
+GRAYLOG_EXTERNAL_URI=...
+```
+
+### ✅ Keep it Secure:
+
+- Do **not** check it into version control (`.gitignore` should include `.env`)
+- Set restrictive permissions:
+  ```bash
+  chmod 600 /srv/docker-data/.env
+  ```
+- Store backups securely and rotate secrets periodically
+
+---
+
+## 🔁 Auto-Start with systemd
+
+To ensure the stack survives reboots and reinitializes automatically, use a systemd unit:
+
+### ✅ Example: `/etc/systemd/system/graylog-docker.service`
+
+```ini
+[Unit]
+Description=Graylog Docker Compose Stack
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/srv/docker-data
+ExecStart=/usr/bin/docker compose up -d
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Enable It:
 
 ```bash
-ansible-playbook -i inventory.ini bootstrap.yml --ask-become-pass --extra-vars "tailscale_authkey=tskey-xxxxxxxxxxxxxxxx"
+sudo systemctl daemon-reexec
+sudo systemctl enable --now graylog-docker.service
 ```
 
-You will be prompted for the `ansibleadmin` sudo password unless passwordless sudo is configured.
+---
 
-## 🔐 SSH Key Setup
+## 📎 Useful Commands
 
-To prepare the server for Ansible management:
+- View logs: `docker compose logs -f`
+- Restart stack: `docker compose restart`
+- Tear down: `docker compose down`
 
-```bash
-ssh-copy-id ansibleadmin@your.server.ip
-```
+---
 
-This enables Ansible to connect using your existing SSH key.
+## 🧪 Verification
 
-## 📦 Managing Secrets
+- Visit `http://<tailscale-ip>:9000`
+- Login with root and your hashed password
+- Confirm logs are arriving via GELF or syslog input
 
-Use `--extra-vars` to pass your Tailscale auth key inline or consider using Ansible Vault to encrypt secrets.
+---
 
-ansible-playbook -i inventory.ini bootstrap.yml --ask-become-pass --extra-vars "tailscale_authkey=tskey-abc123def456ghi789"
+## 🧰 Maintenance Tips
 
+- Monitor disk usage in `/srv/docker-data`
+- Regularly update container images with:
+  ```bash
+  docker compose pull && docker compose up -d
+  ```
+- Consider Watchtower or systemd timers for automatic updates
 
-## ⏲️ Timezone
-
-The system will be configured to use **UTC**. You can adjust this in the playbook if needed.
-
-## 👥 Contributors
-
-- You
-
-## 📄 License
-
-MIT
+---
