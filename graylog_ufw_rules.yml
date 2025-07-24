@@ -1,0 +1,40 @@
+---
+- name: Configure UFW for Graylog
+  hosts: all
+  become: yes
+  tasks:
+    - name: Allow Graylog Web UI (TCP 9000)
+      ufw:
+        rule: allow
+        port: 9000
+        proto: tcp
+
+    - name: Allow Beats input (TCP 5044)
+      ufw:
+        rule: allow
+        port: 5044
+        proto: tcp
+
+    - name: Allow Syslog (TCP 514)
+      ufw:
+        rule: allow
+        port: 514
+        proto: tcp
+
+    - name: Allow Syslog (UDP 514)
+      ufw:
+        rule: allow
+        port: 514
+        proto: udp
+
+    - name: Allow GELF (TCP 12201)
+      ufw:
+        rule: allow
+        port: 12201
+        proto: tcp
+
+    - name: Allow GELF (UDP 12201)
+      ufw:
+        rule: allow
+        port: 12201
+        proto: udp
