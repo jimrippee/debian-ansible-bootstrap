@@ -3,12 +3,47 @@
   hosts: lilyhost01
   become: true
   vars:
+    docker_data_mount: /srv/docker-data
+    docker_data_device: /dev/nvme0n1
     tailscale_authkey: ""  # Provide via --extra-vars or Vault
+    ansibleadmin_ssh_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFSsEngu8whaTye0S5zRhHbuNbJQv4DY7I8qxU5cyes2"
+    ansibleadmin_uid: 1100
+    ansibleadmin_gid: 1100
 
   roles:
     - geerlingguy.docker
   
   tasks:
+
+    - name: Create filesystem on data disk
+      community.general.filesystem:
+        fstype: ext4
+        dev: "{{ docker_data_device }}"
+        force: false
+
+    - name: Create mount point
+      file:
+        path: "{{ docker_data_mount }}"
+        state: directory
+        mode: '0755'
+
+    - name: Mount the disk
+      ansible.posix.mount:
+        path: "{{ docker_data_mount }}"
+        src: "{{ docker_data_device }}"
+        fstype: ext4
+        opts: defaults
+        state: mounted
+
+    - name: Ensure fstab entry is present
+      ansible.posix.mount:
+        path: "{{ docker_data_mount }}"
+        src: "{{ docker_data_device }}"
+        fstype: ext4
+        opts: defaults
+        state: present
+
+
     - name: Set system timezone to UTC
       timezone:
         name: Etc/UTC
@@ -78,18 +113,6 @@
       ufw:
         state: enabled
         policy: deny
-    
-    - name: Add ansibleadmin to docker group
-      user:
-        name: ansibleadmin
-        groups: docker
-        append: yes
-    
-    - name: Add rippee to docker group
-      user:
-        name: rippee
-        groups: docker
-        append: yes
 
     - name: Ensure unattended-upgrades and dependencies are installed
       apt:
@@ -130,6 +153,49 @@
         name: unattended-upgrades
         enabled: yes
         state: started
+    
+    - name: Create ansibleadmin group
+      group:
+        name: ansibleadmin
+        gid: "{{ ansibleadmin_gid }}"
+        state: present
+
+    - name: Create ansibleadmin user
+      user:
+        name: ansibleadmin
+        uid: "{{ ansibleadmin_uid }}"
+        group: ansibleadmin
+        shell: /bin/bash
+        create_home: yes
+        state: present
+
+    - name: Add ansibleadmin to docker group
+      user:
+        name: ansibleadmin
+        groups: docker
+        append: yes
+    
+    - name: Add rippee to docker group
+      user:
+        name: rippee
+        groups: docker
+        append: yes
+
+    - name: Add SSH public key for ansibleadmin
+      authorized_key:
+        user: ansibleadmin
+        key: "{{ ansibleadmin_ssh_pubkey }}"
+        state: present
+        exclusive: false
+        manage_dir: true
+
+    - name: Allow ansibleadmin passwordless sudo
+      copy:
+        dest: /etc/sudoers.d/99-ansibleadmin
+        content: "ansibleadmin ALL=(ALL) NOPASSWD:ALL\n"
+        owner: root
+        group: root
+        mode: '0440'
   
   handlers:
     - name: Start Tailscaled

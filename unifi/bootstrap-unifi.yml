@@ -1,0 +1,29 @@
+---
+- name: Prepare Docker host for unifi
+  hosts: lilyhost01
+  become: yes
+  vars:
+    docker_data_device: /dev/nvme0n1
+    docker_data_mount: /srv/docker-data
+    unifi_path: /srv/docker-data/unifi
+    ansibleadmin_uid: 1100
+    ansibleadmin_gid: 1100
+
+  tasks:
+    - name: Create unifi top-level directory
+      file:
+        path: "{{ unifi_path }}"
+        state: directory
+        owner: "{{ ansibleadmin_uid }}"
+        group: "{{ ansibleadmin_gid }}"
+        mode: '0770'
+        recurse: yes
+
+    - name: Ensure unifi data directory exists and is owned by ansibleadmin
+      file:
+        path: "{{ unifi_path}}/data"
+        state: directory
+        owner: "{{ ansibleadmin_uid }}"
+        group: "{{ ansibleadmin_gid }}"
+        recurse: yes
+        mode: "0770"

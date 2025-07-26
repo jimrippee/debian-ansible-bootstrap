@@ -1,0 +1,144 @@
+---
+- name: Prepare Docker host for Graylog stack
+  hosts: lilyhost01
+  become: yes
+  vars:
+    docker_data_mount: /srv/docker-data
+    graylog_path: /srv/docker-data/graylog
+    ansibleadmin_uid: 1100
+    ansibleadmin_gid: 1100
+
+  tasks:
+
+    - name: Ensure sysctl config exists for vm.max_map_count
+      copy:
+        dest: /etc/sysctl.d/99-graylog.conf
+        content: "vm.max_map_count=262144\n"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Reload sysctl to apply vm.max_map_count
+      command: sysctl --system
+
+    - name: Create Graylog top-level directory
+      file:
+        path: "{{ graylog_path }}"
+        state: directory
+        owner: "{{ ansibleadmin_uid }}"
+        group: "{{ ansibleadmin_gid }}"
+        mode: '0770'
+        recurse: yes
+
+    - name: Create datanode directory
+      file:
+        path: "{{ graylog_path }}/data/datanode"
+        state: directory
+        owner: "{{ ansibleadmin_uid }}"
+        group: "{{ ansibleadmin_gid }}"
+        mode: '0770'
+        recurse: yes
+
+    - name: Create graylog data directory
+      file:
+        path: "{{ graylog_path }}/data/graylog"
+        state: directory
+        owner: "{{ ansibleadmin_uid }}"
+        group: "{{ ansibleadmin_gid }}"
+        mode: '0770'
+        recurse: yes
+    
+    - name: Create graylog data directory
+      file:
+        path: "{{ graylog_path }}/data/mongo"
+        state: directory
+        owner: "{{ ansibleadmin_uid }}"
+        group: "{{ ansibleadmin_gid }}"
+        mode: '0770'
+        recurse: yes
+
+    - name: Ensure Graylog data directory exists and is owned by ansibleadmin
+      file:
+        path: "{{ graylog_path }}/data"
+        state: directory
+        owner: "{{ ansibleadmin_uid }}"
+        group: "{{ ansibleadmin_gid }}"
+        recurse: yes
+        mode: "0770"
+      loop:
+        - "{{ graylog_path }}/data/graylog"
+        - "{{ graylog_path }}/data/mongo"
+        - "{{ graylog_path }}/data/datanode"   
+
+    - name: Allow Graylog Web UI (TCP 9000)
+      ufw:
+        rule: allow
+        port: 9000
+        proto: tcp
+
+    - name: Allow Beats input (TCP 5044)
+      ufw:
+        rule: allow
+        port: 5044
+        proto: tcp
+
+    - name: Allow Syslog (TCP 514)
+      ufw:
+        rule: allow
+        port: 514
+        proto: tcp
+
+    - name: Allow Syslog (UDP 514)
+      ufw:
+        rule: allow
+        port: 514
+        proto: udp
+
+    - name: Allow GELF (TCP 12201)
+      ufw:
+        rule: allow
+        port: 12201
+        proto: tcp
+
+    - name: Allow GELF (UDP 12201)
+      ufw:
+        rule: allow
+        port: 12201
+        proto: udp
+
+    - name: Allow Graylog Web UI (TCP 9000)
+      ufw:
+        rule: allow
+        port: 9000
+        proto: tcp
+
+    - name: Allow Beats input (TCP 5044)
+      ufw:
+        rule: allow
+        port: 5044
+        proto: tcp
+
+    - name: Allow Syslog (TCP 514)
+      ufw:
+        rule: allow
+        port: 514
+        proto: tcp
+
+    - name: Allow Syslog (UDP 514)
+      ufw:
+        rule: allow
+        port: 514
+        proto: udp
+
+    - name: Allow GELF (TCP 12201)
+      ufw:
+        rule: allow
+        port: 12201
+        proto: tcp
+
+    - name: Allow GELF (UDP 12201)
+      ufw:
+        rule: allow
+        port: 12201
+        proto: udp
+
