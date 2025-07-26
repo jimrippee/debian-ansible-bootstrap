@@ -1,6 +1,6 @@
 ---
 - name: Bootstrap Debian server
-  hosts: lillyhost01
+  hosts: lilyhost01
   become: true
   vars:
     tailscale_authkey: ""  # Provide via --extra-vars or Vault
@@ -90,9 +90,51 @@
         name: rippee
         groups: docker
         append: yes
+
+    - name: Ensure unattended-upgrades and dependencies are installed
+      apt:
+        name:
+          - unattended-upgrades
+          - apt-listchanges
+        state: present
+        update_cache: yes
+
+    - name: Configure unattended upgrades
+      copy:
+        dest: /etc/apt/apt.conf.d/50unattended-upgrades
+        content: |
+          Unattended-Upgrade::Allowed-Origins {
+              "${distro_id}:${distro_codename}-security";
+              "${distro_id}:${distro_codename}-updates";
+              "${distro_id}:${distro_codename}-proposed";
+              "${distro_id}:${distro_codename}-backports";
+          };
+
+          Unattended-Upgrade::Automatic-Reboot "true";
+          Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+          Unattended-Upgrade::Automatic-Reboot-Time "03:00";
+
+          Unattended-Upgrade::OnlyOnWeekdays "7";
+
+          Unattended-Upgrade::Remove-Unused-Dependencies "true";
+          Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+
+          Unattended-Upgrade::Verbose "true";
+          Unattended-Upgrade::SyslogEnable "true";
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Enable unattended-upgrades service
+      systemd:
+        name: unattended-upgrades
+        enabled: yes
+        state: started
+  
   handlers:
     - name: Start Tailscaled
       systemd:
         name: tailscaled
         enabled: true
         state: started
+

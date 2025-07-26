@@ -1,109 +1,157 @@
-# Graylog Docker Stack (with Tailscale & Systemd)
+# 🐳 Graylog Open Core Deployment
 
-This project bootstraps a secure, persistent Graylog stack using Docker Compose, tailored for headless or homelab environments. It supports automated deployment and systemd integration.
-
----
-
-## 🔧 Components
-
-- **Graylog**: Centralized log management
-- **MongoDB**: Metadata storage
-- **OpenSearch**: Log indexing and search
-- **Tailscale**: Secure remote access over your tailnet
+This project automates the deployment of a production-ready [Graylog Open Core](https://www.graylog.org/products/open-core) stack using Docker, systemd, and Ansible. It provisions persistent storage, secures permissions, configures unattended system updates, and simplifies service management.
 
 ---
 
-## 🚀 Deployment Steps
+## 📁 Contents
 
-1. Provision your Debian 12 server
-2. Run the Ansible playbook to install Docker and Tailscale
-3. Mount and prepare persistent disk at `/srv/docker-data`
-4. Place your `docker-compose.yml` and `.env` file in `/srv/docker-data`
-5. Run:
+| File                      | Purpose                                                      |
+|---------------------------|--------------------------------------------------------------|
+| `docker-compose.yml`      | Defines the Graylog stack (Graylog, DataNode, MongoDB)       |
+| `prepare-disk.yml`        | Prepares and mounts data disk, sets ACLs, configures sysctl  |
+| `bootstrap.yml`           | Creates `ansibleadmin` user with SSH key and sudo access     |
+| `graylog-docker.service`  | systemd unit to manage Graylog stack as a background service |
+| `graylog_ufw_rules.yml`   | Configures firewall rules (UFW) for Graylog ports            |
+| `requirements.yml`        | External Ansible role dependencies                           |
+| `.gitignore`              | Ignores runtime files and artifacts                          |
+| `README.md`               | You're here 👋                                               |
+
+---
+
+## ⚙️ Prerequisites
+
+- Ubuntu 22.04 or Debian 12+
+- Disk device for Docker data (e.g. `/dev/nvme0n1`)
+- Ansible installed locally
+- SSH access as root or another provisioning user
+
+---
+
+## 🚀 Deployment Overview
+
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/jimrippee/infra-docker.git
+cd infra-docker/graylog
+```
+
+### 2. Optional: Create `ansibleadmin` user
+
+```bash
+ansible-playbook bootstrap.yml -u root -i inventory.ini \
+  --extra-vars "ansibleadmin_pubkey='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFSsEngu8whaTye0S5zRhHbuNbJQv4DY7I8qxU5cyes2'"
+```
+
+This creates a passwordless `ansibleadmin` user (UID 1100), installs your SSH key, and enables passwordless sudo access.
+
+---
+
+### 3. Prepare Docker Data Disk
+
+```bash
+ansible-playbook prepare-disk.yml -u root -i inventory.ini
+```
+
+This will:
+
+- Format and mount `/dev/nvme0n1` to `/srv/docker-data`
+- Configure `vm.max_map_count=262144`
+- Create `/srv/docker-data/graylog` owned by `ansibleadmin` (UID 1100)
+- Enable unattended upgrades with:
+  - Security + kernel updates
+  - Reboots every **Sunday at 3:00 AM**
+
+---
+
+### 4. Launch Stack
 
 ```bash
 docker compose up -d
 ```
 
----
-
-## 🔐 .env File Security
-
-Your `.env` file contains **secrets** needed to launch the Graylog container:
-
-```env
-GRAYLOG_PASSWORD_SECRET=...
-GRAYLOG_ROOT_PASSWORD_SHA2=...
-GRAYLOG_EXTERNAL_URI=...
-```
-
-### ✅ Keep it Secure:
-
-- Do **not** check it into version control (`.gitignore` should include `.env`)
-- Set restrictive permissions:
-  ```bash
-  chmod 600 /srv/docker-data/.env
-  ```
-- Store backups securely and rotate secrets periodically
-
----
-
-## 🔁 Auto-Start with systemd
-
-To ensure the stack survives reboots and reinitializes automatically, use a systemd unit:
-
-### ✅ Example: `/etc/systemd/system/graylog-docker.service`
-
-```ini
-[Unit]
-Description=Graylog Docker Compose Stack
-Requires=network-online.target
-After=network-online.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-WorkingDirectory=/srv/docker-data
-ExecStart=/usr/bin/docker compose up -d
-ExecStop=/usr/bin/docker compose down
-TimeoutStartSec=0
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### Enable It:
+OR run as a background service:
 
 ```bash
-sudo systemctl daemon-reexec
-sudo systemctl enable --now graylog-docker.service
+cp graylog-docker.service /etc/systemd/system/
+systemctl daemon-reexec
+systemctl enable graylog-docker
+systemctl start graylog-docker
 ```
 
 ---
 
-## 📎 Useful Commands
+### 5. Firewall Rules (Optional)
 
-- View logs: `docker compose logs -f`
-- Restart stack: `docker compose restart`
-- Tear down: `docker compose down`
+```bash
+ansible-playbook graylog_ufw_rules.yml -u root -i inventory.ini
+```
+
+This allows ports such as:
+
+- 9000 (Web UI)
+- 5044 (Beats)
+- 5140 (Syslog TCP/UDP)
+- 12201 (GELF TCP/UDP)
+- 13301–13302 (Forwarder)
+
+---
+
+## 🔐 Environment Variables
+
+You must define these in a `.env` file:
+
+```dotenv
+GRAYLOG_PASSWORD_SECRET=your-random-secret
+GRAYLOG_ROOT_PASSWORD_SHA2=your-sha256-hash
+```
+
+To generate a SHA256 password hash:
+
+```bash
+echo -n 'YourPasswordHere' | sha256sum
+```
 
 ---
 
-## 🧪 Verification
+## 📍 Graylog Access
 
-- Visit `http://<tailscale-ip>:9000`
-- Login with root and your hashed password
-- Confirm logs are arriving via GELF or syslog input
+After launch, visit:
+
+```
+http://<your-server-ip>:9000
+```
+
+---
+
+## 🛡 System Security
+
+This deployment includes:
+
+- ACL-controlled persistent data directory (`/srv/docker-data/graylog`)
+- Hardened file permissions for Docker volumes
+- `vm.max_map_count` for Elasticsearch compatibility
+- `unattended-upgrades` with controlled reboots
+- UFW rules scoped to essential Graylog ports
 
 ---
 
-## 🧰 Maintenance Tips
+## 🔧 To Do
 
-- Monitor disk usage in `/srv/docker-data`
-- Regularly update container images with:
-  ```bash
-  docker compose pull && docker compose up -d
-  ```
-- Consider Watchtower or systemd timers for automatic updates
+- Add TLS reverse proxy (Caddy or Traefik)
+- Tailscale-based remote logging
+- Graylog + Vector + Wazuh integration
+- Automated snapshot backups
 
 ---
+
+## 👤 Author
+
+- [@jimrippee](https://github.com/jimrippee)
+
+---
+
+## 📝 License
+
+MIT — Use at your own risk. Contributions welcome!

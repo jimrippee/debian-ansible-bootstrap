@@ -4,7 +4,7 @@
 services:
   # MongoDB: https://hub.docker.com/_/mongo/
   mongodb:
-    image: "mongo:6.0"
+    image: "mongo:6.0.25"
     restart: "on-failure"
     networks:
       - graylog
@@ -14,7 +14,7 @@ services:
 
   # Graylog Data Node: https://hub.docker.com/r/graylog/graylog-datanode
   datanode:
-    image: "${DATANODE_IMAGE:-graylog/graylog-datanode:6.1}"
+    image: "${DATANODE_IMAGE:-graylog/graylog-datanode:6.3.1}"
     hostname: "datanode"
     environment:
       GRAYLOG_DATANODE_NODE_ID_FILE: "/var/lib/graylog-datanode/node-id"
@@ -41,7 +41,7 @@ services:
   # Graylog: https://hub.docker.com/r/graylog/graylog-enterprise
   graylog:
     hostname: "server"
-    image: "${GRAYLOG_IMAGE:-graylog/graylog:6.1}"
+    image: "${GRAYLOG_IMAGE:-graylog/graylog:6.3.1}"
     depends_on:
       mongodb:
         condition: "service_started"

@@ -1,0 +1,101 @@
+---
+- name: Prepare Docker host for Graylog stack
+  hosts: lilyhost01
+  become: yes
+  vars:
+    docker_data_device: /dev/nvme0n1
+    docker_data_mount: /srv/docker-data
+    graylog_path: /srv/docker-data/graylog
+    ansibleadmin_uid: 1100
+    ansibleadmin_gid: 1100
+    ansibleadmin_ssh_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFSsEngu8whaTye0S5zRhHbuNbJQv4DY7I8qxU5cyes2"
+
+  tasks:
+
+    - name: Ensure sysctl config exists for vm.max_map_count
+      copy:
+        dest: /etc/sysctl.d/99-graylog.conf
+        content: "vm.max_map_count=262144\n"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Reload sysctl to apply vm.max_map_count
+      command: sysctl --system
+
+    - name: Create filesystem on data disk
+      community.general.filesystem:
+        fstype: ext4
+        dev: "{{ docker_data_device }}"
+        force: false
+
+    - name: Create mount point
+      file:
+        path: "{{ docker_data_mount }}"
+        state: directory
+        mode: '0755'
+
+    - name: Mount the disk
+      ansible.posix.mount:
+        path: "{{ docker_data_mount }}"
+        src: "{{ docker_data_device }}"
+        fstype: ext4
+        opts: defaults
+        state: mounted
+
+    - name: Ensure fstab entry is present
+      ansible.posix.mount:
+        path: "{{ docker_data_mount }}"
+        src: "{{ docker_data_device }}"
+        fstype: ext4
+        opts: defaults
+        state: present
+
+    - name: Create ansibleadmin group
+      group:
+        name: ansibleadmin
+        gid: "{{ ansibleadmin_gid }}"
+        state: present
+
+    - name: Create ansibleadmin user
+      user:
+        name: ansibleadmin
+        uid: "{{ ansibleadmin_uid }}"
+        group: ansibleadmin
+        shell: /bin/bash
+        create_home: yes
+        state: present
+
+    - name: Add SSH public key for ansibleadmin
+      authorized_key:
+        user: ansibleadmin
+        key: "{{ ansibleadmin_ssh_pubkey }}"
+        state: present
+        exclusive: false
+        manage_dir: true
+
+    - name: Create Graylog top-level directory
+      file:
+        path: "{{ graylog_path }}"
+        state: directory
+        owner: "{{ ansibleadmin_uid }}"
+        group: "{{ ansibleadmin_gid }}"
+        mode: '0770'
+        recurse: yes
+
+    - name: Ensure Graylog data directory exists and is owned by ansibleadmin
+      file:
+        path: /srv/docker-data/graylog
+        state: directory
+        owner: "1100"
+        group: "1100"
+        recurse: yes
+        mode: "0770"
+
+    - name: Allow ansibleadmin passwordless sudo
+      copy:
+        dest: /etc/sudoers.d/99-ansibleadmin
+        content: "ansibleadmin ALL=(ALL) NOPASSWD:ALL\n"
+        owner: root
+        group: root
+        mode: '0440'
