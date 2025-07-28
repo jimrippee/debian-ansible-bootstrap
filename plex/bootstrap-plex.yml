@@ -1,0 +1,81 @@
+---
+- name: Prepare Plex media disks
+  hosts: lilyhost01
+  become: yes
+  vars:
+    plex_uid: 1100
+    plex_gid: 1100
+    docker_data_mount: /srv/docker-data
+    plex_path: /srv/docker-data/plex
+    disks:
+      - device: /dev/sdb1
+        mount_point: /plex/movies
+      - device: /dev/sdb2
+        mount_point: /plex/tv
+
+  tasks:
+
+    - name: Ensure mount points exist
+      file:
+        path: "{{ item.mount_point }}"
+        state: directory
+        owner: "{{ plex_uid }}"
+        group: "{{ plex_gid }}"
+        mode: '0755'
+      loop: "{{ disks }}"
+
+    - name: Format disks with ext4 (if unformatted)
+      filesystem:
+        fstype: ext4
+        dev: "{{ item.device }}"
+      loop: "{{ disks }}"
+
+    - name: Get UUID of each disk
+      command: blkid -s UUID -o value {{ item.device }}
+      register: blkid_output
+      loop: "{{ disks }}"
+      changed_when: false
+
+    - name: Set fact for UUID mapping (device -> UUID)
+      set_fact:
+        disk_uuid_map: "{{ dict(disks | map(attribute='device') | zip(blkid_output.results | map(attribute='stdout') | list)) }}"
+
+    - name: Create /etc/fstab entries and mount disks
+      mount:
+        path: "{{ (disks | selectattr('device', 'equalto', item.0) | list).0.mount_point }}"
+        src: "UUID={{ item.1 }}"
+        fstype: ext4
+        opts: defaults
+        state: mounted
+      loop: "{{ disk_uuid_map.items() }}"
+
+    - name: Ensure correct ownership on mount points
+      file:
+        path: "{{ item.mount_point }}"
+        owner: "{{ plex_uid }}"
+        group: "{{ plex_gid }}"
+        recurse: yes
+      loop: "{{ disks }}"
+
+    - name: Create Plex Docker data directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        recurse: yes
+        owner: 1100
+        group: 1100
+        mode: '0755'
+      loop:
+        - "{{ plex_path }}"
+        - "{{ plex_path }}/data"
+
+    - name: Verify ownership
+      stat:
+        path: "{{ plex_path }}/data"
+      register: plex_data_stat
+
+    - name: Show ownership
+      debug:
+        var: plex_data_stat.stat
+
+  

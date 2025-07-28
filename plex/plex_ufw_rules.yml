@@ -1,0 +1,34 @@
+---
+- name: Configure UFW for Plex server with HDHomeRun
+  hosts: lilyhost01
+  become: yes
+  tasks:
+
+    - name: Ensure UFW is installed
+      apt:
+        name: ufw
+        state: present
+        update_cache: yes
+
+    - name: Allow Plex Web UI and streaming (TCP 32400)
+      ufw:
+        rule: allow
+        port: 32400
+        proto: tcp
+
+    - name: Allow DLNA (TCP 32469) - optional
+      ufw:
+        rule: allow
+        port: 32469
+        proto: tcp
+
+    - name: Allow SSDP discovery (UDP 1900) - optional, for DLNA
+      ufw:
+        rule: allow
+        port: 1900
+        proto: udp
+
+    - name: Enable UFW if not already enabled
+      ufw:
+        state: enabled
+        policy: allow  # assumes host is already secured; adjust as needed
